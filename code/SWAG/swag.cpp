@@ -1,9 +1,24 @@
 #include "swag.hpp"
 
-
-
-#include <Windows.h>
+#include <sstream>
 #include <cstdlib>
+
+#if defined(WIN32)
+	#include <WinSock2.h>
+
+	#pragma comment(lib, "ws2_32.lib")
+#elif defined(__linux__)
+	#include <sys/socket.h>
+	#include <netinet/in.h>
+	#include <arpa/inet.h>
+	#include <stdio.h>
+	#include <stdlib.h>
+	#include <unistd.h>
+	#include <errno.h>
+	#include <string.h>
+	#include <sys/types.h>
+	#include <time.h>
+#endif
 
 using namespace std;
 
@@ -21,15 +36,118 @@ void SWAG::run() {
 	}
 
 	//Fire up web worker in current thread
-	WebWorker(this).run();
+	constexpr TYPE_PORT SWAG_PORT = 8888;
+	WebWorker(this, SWAG_PORT).run();
 }
 
 //==========Workers
 void SWAG::WebWorker::run() {
-	while (true) {
-		_swag->_processingQueue.push({ "TEST URI", "TEST USERAGENT" });
-		::Sleep(500);
+	//init socket
+	sockaddr_in address{0};
+	int addrlen = sizeof(address);
+	int sockfd;
+
+	constexpr auto REQUEST_BUFFER_SIZE = 0x1000;
+	char requestBuffer[REQUEST_BUFFER_SIZE]{0};
+	const std::string successResponseBuffer = "HTTP/1.1 200 OK\r\n";
+	const std::string failureResponseBuffer = "HTTP/1.1 400 Bad Request\r\n";
+
+#ifdef WIN32
+	WSADATA wsaData;
+	if (0 != WSAStartup(MAKEWORD(2, 2), &wsaData)) {
+		//TODO add error handling
+		_swag->_outputter.print(__FUNCTION__": [ERROR] WSAStartup() failed\n");
+		return;
 	}
+#endif
+
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (0 == sockfd) {
+		_swag->_outputter.print(__FUNCTION__": [ERROR] socket() failed\n");
+		return;
+	}
+
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	//TODO place port value somewhere else
+	address.sin_port = htons((unsigned short)_port);
+	if (bind(sockfd, (struct sockaddr*)&address, sizeof(address)) == SOCKET_ERROR) {
+		_swag->_outputter.print(__FUNCTION__": [ERROR] bind() failed ");
+		_swag->_outputter.print(std::to_string(WSAGetLastError())+"\n");
+		return;
+	}
+
+	constexpr auto SOCK_QUEUE_LIMIT = 5;
+	//TODO add error handling
+	listen(sockfd, SOCK_QUEUE_LIMIT);
+	
+	while (true) {
+		//Init acceptor socket
+		int hClientSocket = accept(sockfd, (struct sockaddr*)&address, &addrlen);
+		if (0 == hClientSocket) {
+			_swag->_outputter.print(__FUNCTION__": [ERROR] accept() failed\n");
+			return;
+		}
+
+		//Aquire request contents
+		auto recvSize = recv(hClientSocket, requestBuffer, sizeof(requestBuffer), 0);
+		 
+		//Response on request
+		const char* PROCESS_METHOD_PATTERN = "GET ";
+		if (std::strncmp(requestBuffer, PROCESS_METHOD_PATTERN, strlen(PROCESS_METHOD_PATTERN))) {
+			send(hClientSocket, failureResponseBuffer.data(), failureResponseBuffer.size(), 0);
+			closesocket(hClientSocket);
+			continue;
+		}
+
+		//Parse data
+		istringstream sstr{ std::string(requestBuffer, recvSize) };
+		std::string curLine;
+
+		//Get URI
+		std::getline(sstr, curLine, '\n');
+		auto requestURI = std::string(
+			curLine.cbegin() + curLine.find_first_of(' ') + 1,
+			curLine.cbegin() + curLine.find_last_of(' ')
+		);
+
+		//Get User-Agent
+		std::string UserAgent;
+		bool flagUserAgentFound=false;
+		const char* USERAGENT_HEADER_PATTERN = "User-Agent:";
+		while (std::getline(sstr, curLine, '\n')) {
+			if (curLine == "\r\n") { break; } //blank line - footer section end
+			if (curLine.find(USERAGENT_HEADER_PATTERN)==0) {
+				//UserAgent = curLine.substr(curLine.find_first_of(' ') + 1, curLine.length()-1); // assuming '\r\n' in the end of every line
+				UserAgent = std::string(
+					curLine.cbegin()+ curLine.find_first_of(' ') + 1,
+					curLine.cend()-1
+				);
+				flagUserAgentFound = true;
+				break;
+			}
+		}
+
+		if (!flagUserAgentFound) {
+			send(hClientSocket, failureResponseBuffer.data(), failureResponseBuffer.size(), 0);
+			closesocket(hClientSocket);
+			continue;
+		}
+
+		send(hClientSocket, successResponseBuffer.data(), successResponseBuffer.size(), 0);
+		closesocket(hClientSocket);
+
+		if (UserAgent.size() != std::strlen(UserAgent.data())) {
+			UserAgent = UserAgent.substr(0, std::strlen(UserAgent.data()));
+		}
+
+		//Store data
+		_swag->_processingQueue.push({ requestURI, UserAgent });
+	}
+
+#ifdef WIN32
+	WSACleanup();
+#endif
 }
 
 void SWAG::ProcessorWorker::run() {

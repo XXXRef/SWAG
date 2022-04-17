@@ -7,6 +7,8 @@
 #include "threadsafe_queue.hpp"
 #include "threadsafe_outputter.hpp"
 
+#include "utils.hpp"
+
 #include "sha1.hpp"
 
 //class - private namespace
@@ -21,6 +23,8 @@ public:
 
 	void run();
 
+private:
+	using TYPE_HITCOUNT = std::size_t;
 
 	class ISWAGWorker {
 	public:
@@ -33,17 +37,8 @@ public:
 
 	class ProcessorWorker;
 	friend class ProcessorWorker;
-private:
-	using TYPE_HITCOUNT = std::size_t;
-
-	
-
 	class WebWorker;
 	friend class WebWorker;
-
-	
-	
-	
 
 	struct RequestData {
 		std::string URI;
@@ -58,11 +53,11 @@ private:
 //==========Workers
 class SWAG::WebWorker: public ISWAGWorker {
 public:
-	WebWorker(SWAG* par_swag) : ISWAGWorker(par_swag) {}
+	WebWorker(SWAG* par_swag, TYPE_PORT par_port) : ISWAGWorker(par_swag), _port(par_port) {}
 	void run() override;
 
 private:
-
+	TYPE_PORT _port;
 };
 
 class SWAG::ProcessorWorker : public ISWAGWorker {
@@ -82,8 +77,6 @@ private:
 
 	std::unordered_map<std::string, std::size_t> _URIHitcount;
 	std::unordered_map<std::string, std::size_t> _UserAgentHitcount;
-
-	
 };
 
 #endif
