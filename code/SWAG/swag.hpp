@@ -1,0 +1,83 @@
+#ifndef HEADER_SWAG
+#define HEADER_SWAG
+
+#include <string>
+#include <map>
+
+#include "threadsafe_queue.hpp"
+#include "threadsafe_outputter.hpp"
+
+//class - private namespace
+class SWAG {
+public:
+	//Constructors (default, copy, move)
+	SWAG();
+	SWAG(const SWAG&) = delete;
+	SWAG& operator=(const SWAG&) = delete;
+	SWAG(SWAG&&) = delete;
+	SWAG&& operator=(SWAG&&) = delete;
+
+	void run();
+
+
+	class ISWAGWorker {
+	public:
+		ISWAGWorker(SWAG* par_swag) : _swag(par_swag) {}
+		virtual void run() = 0;
+
+	protected:
+		SWAG* _swag;
+	};
+
+	class ProcessorWorker;
+	friend class ProcessorWorker;
+private:
+	using TYPE_HITCOUNT = std::size_t;
+
+	
+
+	class WebWorker;
+	friend class WebWorker;
+
+	
+	
+	
+
+	struct RequestData {
+		std::string URI;
+		std::string UserAgent;
+	};
+
+private:
+	ThreadsafeQueue<RequestData> _processingQueue;
+	ThreadsafeOutputter _outputter;
+};
+
+//==========Workers
+class SWAG::WebWorker: public ISWAGWorker {
+public:
+	WebWorker(SWAG* par_swag) : ISWAGWorker(par_swag) {}
+	void run() override;
+
+private:
+
+};
+
+class SWAG::ProcessorWorker : public ISWAGWorker {
+public:
+	ProcessorWorker(SWAG* par_swag) : ISWAGWorker(par_swag) {}
+
+	void run() override;
+
+private:
+	//TODO string -> string_view
+	static std::string _produceLogMessage(
+		const std::string& par_URI, const std::string& par_URIHash, TYPE_HITCOUNT par_URIHitcount,
+		const std::string& par_UserAgent, const std::string& par_UserAgentHash, TYPE_HITCOUNT par_UserAgentHitcount);
+
+private:
+	std::map<std::string, std::size_t> _URIHitcount;
+	std::map<std::string, std::size_t> _UserAgentHitcount;
+};
+
+#endif
