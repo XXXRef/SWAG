@@ -2,10 +2,12 @@
 #define HEADER_SWAG
 
 #include <string>
-#include <map>
+#include <unordered_map>
 
 #include "threadsafe_queue.hpp"
 #include "threadsafe_outputter.hpp"
+
+#include "sha1.hpp"
 
 //class - private namespace
 class SWAG {
@@ -76,8 +78,12 @@ private:
 		const std::string& par_UserAgent, const std::string& par_UserAgentHash, TYPE_HITCOUNT par_UserAgentHitcount);
 
 private:
-	std::map<std::string, std::size_t> _URIHitcount;
-	std::map<std::string, std::size_t> _UserAgentHitcount;
+	SHA1 _hasher;
+
+	std::unordered_map<std::string, std::size_t> _URIHitcount;
+	std::unordered_map<std::string, std::size_t> _UserAgentHitcount;
+
+	
 };
 
 #endif

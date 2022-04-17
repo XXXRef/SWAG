@@ -1,6 +1,6 @@
 #include "swag.hpp"
 
-#include "sha1.hpp"
+
 
 #include <Windows.h>
 #include <cstdlib>
@@ -33,21 +33,28 @@ void SWAG::WebWorker::run() {
 }
 
 void SWAG::ProcessorWorker::run() {
-	SHA1 hasher;
-
 	while (true) {
 		//Acquire item from queue
 		RequestData data;
 		_swag->_processingQueue.pop(data);
 
 		//Process data (calc SHA1, hitcount, ...)
-		hasher.update(data.URI);
-		auto URIHash = hasher.final();
-		hasher.update(data.UserAgent);
-		auto UAHash = hasher.final();
+		_hasher.update(data.URI);
+		auto URIHash = _hasher.final();
+		_hasher.update(data.UserAgent);
+		auto UAHash = _hasher.final();
+
+		//TIP TYPE_HITCOUNT as type could be here
+		decltype(_URIHitcount)::value_type::second_type URIHitcount;
+		auto iterURI = _URIHitcount.find(data.URI);
+		URIHitcount = (iterURI == _URIHitcount.cend()) ? (_URIHitcount[data.URI] = 1) : (++iterURI->second);
+		
+		decltype(_UserAgentHitcount)::value_type::second_type UserAgentHitcount;
+		auto iterUserAgent = _UserAgentHitcount.find(data.UserAgent);
+		UserAgentHitcount = (iterUserAgent == _UserAgentHitcount.cend()) ? (_UserAgentHitcount[data.UserAgent] = 1) : (++iterUserAgent->second);
 
 		//Output
-		_swag->_outputter.print(_produceLogMessage(data.URI, URIHash, 5, data.UserAgent, UAHash, 10));
+		_swag->_outputter.print(_produceLogMessage(data.URI, URIHash, URIHitcount, data.UserAgent, UAHash, UserAgentHitcount));
 	}
 }
 
