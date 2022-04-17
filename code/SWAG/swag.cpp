@@ -43,8 +43,6 @@ void SWAG::ProcessorWorker::run() {
 		//Process data (calc SHA1, hitcount, ...)
 		hasher.update(data.URI);
 		auto URIHash = hasher.final();
-
-		//Process data (calc SHA1, hitcount, ...)
 		hasher.update(data.UserAgent);
 		auto UAHash = hasher.final();
 
@@ -97,8 +95,4 @@ string SWAG::ProcessorWorker::_produceLogMessage(
 		+"\n";
 
 	return res;
-
-	/*return format("URI:{}, URI hash:{}, URI hitcount:{}, UA:{}, UA hash:{}, UA hitcount:{}", 
-		par_URI, par_URIHash, par_URIHitcount,
-		par_UserAgent, par_UserAgentHash, par_UserAgentHitcount );*/
 }
