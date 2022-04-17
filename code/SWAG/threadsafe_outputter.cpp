@@ -8,5 +8,5 @@ ThreadsafeOutputter::ThreadsafeOutputter(std::ostream& par_outStream) noexcept :
 void ThreadsafeOutputter::print(const std::string& par_msg) const {
 	lock_guard lg(_m);
 
-	*_pOutStream << par_msg << endl;
+	*_pOutStream << par_msg << std::flush;
 }
