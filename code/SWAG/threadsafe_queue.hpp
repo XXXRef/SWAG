@@ -51,17 +51,20 @@ template<class T> inline bool ThreadsafeQueue<T>::empty() const {
 }
 
 template<class T> void ThreadsafeQueue<T>::push(const T& par_obj) {
-	std::lock_guard lg(_m);
+	{
+		std::lock_guard lg(_m);
 
-	_data.push_back(par_obj);
-
+		_data.push_back(par_obj);
+	}
 	_cv.notify_one();
 }
 
 template<class T> void ThreadsafeQueue<T>::push(T&& par_obj) {
-	std::lock_guard lg(_m);
+	{
+		std::lock_guard lg(_m);
 
-	_data.push_back(std::move(par_obj));
+		_data.push_back(std::move(par_obj));
+	}
 
 	_cv.notify_one();
 }
