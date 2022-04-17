@@ -11,14 +11,14 @@ SWAG::SWAG() = default;
 
 void SWAG::run() {
 	//Fire up processor workers in separate threads
-	ProcessorWorker testProcessorWorker = SWAG::ProcessorWorker(this);
-	thread(&SWAG::ProcessorWorker::run, &testProcessorWorker).detach();
+	using TYPE_THREADAMOUNT = decltype(std::thread::hardware_concurrency()) ;
+	
+	const TYPE_THREADAMOUNT threadsAmount = std::thread::hardware_concurrency();
+	const TYPE_THREADAMOUNT workersAmount = (threadsAmount < 3) ? 1 : threadsAmount - 1;
 
-	ProcessorWorker testProcessorWorker1 = SWAG::ProcessorWorker(this);
-	thread(&SWAG::ProcessorWorker::run, &testProcessorWorker1).detach();
-
-	ProcessorWorker testProcessorWorker2 = SWAG::ProcessorWorker(this);
-	thread(&SWAG::ProcessorWorker::run, &testProcessorWorker2).detach();
+	for (auto i = workersAmount; i != 0; --i) {
+		thread(&SWAG::ProcessorWorker::run, SWAG::ProcessorWorker(this)).detach();
+	}
 
 	//Fire up web worker in current thread
 	WebWorker(this).run();
@@ -28,7 +28,7 @@ void SWAG::run() {
 void SWAG::WebWorker::run() {
 	while (true) {
 		_swag->_processingQueue.push({ "TEST URI", "TEST USERAGENT" });
-		::Sleep(5000);
+		::Sleep(500);
 	}
 }
 
