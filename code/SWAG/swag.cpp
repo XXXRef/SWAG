@@ -2,12 +2,17 @@
 
 #include <sstream>
 #include <cstdlib>
+#include <cstring>
 
-#if defined(WIN32)
+#include <thread>
+
+#if defined(PLATFORM_WINDOWS)
 	#include <WinSock2.h>
 
 	#pragma comment(lib, "ws2_32.lib")
-#elif defined(__linux__)
+
+	#define pfnCloseSocket closesocket
+#elif defined(PLATFORM_NIX)
 	#include <sys/socket.h>
 	#include <netinet/in.h>
 	#include <arpa/inet.h>
@@ -18,6 +23,8 @@
 	#include <string.h>
 	#include <sys/types.h>
 	#include <time.h>
+
+	#define pfnCloseSocket close
 #endif
 
 using namespace std;
@@ -27,7 +34,6 @@ SWAG::SWAG() = default;
 void SWAG::run() {
 	//Fire up processor workers in separate threads
 	using TYPE_THREADAMOUNT = decltype(std::thread::hardware_concurrency()) ;
-	
 	const TYPE_THREADAMOUNT threadsAmount = std::thread::hardware_concurrency();
 	const TYPE_THREADAMOUNT workersAmount = (threadsAmount < 3) ? 1 : threadsAmount - 1;
 
@@ -44,7 +50,7 @@ void SWAG::run() {
 void SWAG::WebWorker::run() {
 	//init socket
 	sockaddr_in address{0};
-	int addrlen = sizeof(address);
+	
 	int sockfd;
 
 	constexpr auto REQUEST_BUFFER_SIZE = 0x1000;
@@ -55,15 +61,15 @@ void SWAG::WebWorker::run() {
 #ifdef WIN32
 	WSADATA wsaData;
 	if (0 != WSAStartup(MAKEWORD(2, 2), &wsaData)) {
-		//TODO add error handling
-		_swag->_outputter.print(__FUNCTION__": [ERROR] WSAStartup() failed\n");
+		//TODO output error code
+		_swag->_outputter.print(std::string(__FUNCTION__) + ": [ERROR] WSAStartup() failed\n");
 		return;
 	}
 #endif
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (0 == sockfd) {
-		_swag->_outputter.print(__FUNCTION__": [ERROR] socket() failed\n");
+		_swag->_outputter.print(std::string(__FUNCTION__) + ": [ERROR] socket() failed\n");
 		return;
 	}
 
@@ -71,9 +77,9 @@ void SWAG::WebWorker::run() {
 	address.sin_addr.s_addr = INADDR_ANY;
 	//TODO place port value somewhere else
 	address.sin_port = htons((unsigned short)_port);
-	if (bind(sockfd, (struct sockaddr*)&address, sizeof(address)) == SOCKET_ERROR) {
-		_swag->_outputter.print(__FUNCTION__": [ERROR] bind() failed ");
-		_swag->_outputter.print(std::to_string(WSAGetLastError())+"\n");
+	if (bind(sockfd, (struct sockaddr*)&address, sizeof(address))) {
+		//TODO error code?
+		_swag->_outputter.print(std::string(__FUNCTION__) + ": [ERROR] bind() failed\n");
 		return;
 	}
 
@@ -83,20 +89,32 @@ void SWAG::WebWorker::run() {
 	
 	while (true) {
 		//Init acceptor socket
+#ifdef WIN32
+		int addrlen = sizeof(address);
+		
+#else
+		unsigned addrlen = sizeof(address);
+#endif
 		int hClientSocket = accept(sockfd, (struct sockaddr*)&address, &addrlen);
+
 		if (0 == hClientSocket) {
-			_swag->_outputter.print(__FUNCTION__": [ERROR] accept() failed\n");
+			_swag->_outputter.print(std::string(__FUNCTION__) + ": [ERROR] accept() failed\n");
 			return;
 		}
 
 		//Aquire request contents
 		auto recvSize = recv(hClientSocket, requestBuffer, sizeof(requestBuffer), 0);
-		 
+		if (recvSize < 1) {
+			send(hClientSocket, failureResponseBuffer.data(), failureResponseBuffer.size(), 0);
+			pfnCloseSocket(hClientSocket);
+			continue;
+		}
+
 		//Response on request
 		const char* PROCESS_METHOD_PATTERN = "GET ";
 		if (std::strncmp(requestBuffer, PROCESS_METHOD_PATTERN, strlen(PROCESS_METHOD_PATTERN))) {
 			send(hClientSocket, failureResponseBuffer.data(), failureResponseBuffer.size(), 0);
-			closesocket(hClientSocket);
+			pfnCloseSocket(hClientSocket);
 			continue;
 		}
 
@@ -118,10 +136,9 @@ void SWAG::WebWorker::run() {
 		while (std::getline(sstr, curLine, '\n')) {
 			if (curLine == "\r\n") { break; } //blank line - footer section end
 			if (curLine.find(USERAGENT_HEADER_PATTERN)==0) {
-				//UserAgent = curLine.substr(curLine.find_first_of(' ') + 1, curLine.length()-1); // assuming '\r\n' in the end of every line
 				UserAgent = std::string(
 					curLine.cbegin()+ curLine.find_first_of(' ') + 1,
-					curLine.cend()-1
+					curLine.cend() - 1
 				);
 				flagUserAgentFound = true;
 				break;
@@ -130,16 +147,12 @@ void SWAG::WebWorker::run() {
 
 		if (!flagUserAgentFound) {
 			send(hClientSocket, failureResponseBuffer.data(), failureResponseBuffer.size(), 0);
-			closesocket(hClientSocket);
+			pfnCloseSocket(hClientSocket);
 			continue;
 		}
 
 		send(hClientSocket, successResponseBuffer.data(), successResponseBuffer.size(), 0);
-		closesocket(hClientSocket);
-
-		if (UserAgent.size() != std::strlen(UserAgent.data())) {
-			UserAgent = UserAgent.substr(0, std::strlen(UserAgent.data()));
-		}
+		pfnCloseSocket(hClientSocket);
 
 		//Store data
 		_swag->_processingQueue.push({ requestURI, UserAgent });
@@ -199,7 +212,7 @@ string SWAG::ProcessorWorker::_produceLogMessage(
 
 		return outstr;
 	};
-
+	
 	//Acquire thread ID
 	auto TID = this_thread::get_id();
 	stringstream ssTID;

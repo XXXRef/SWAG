@@ -67,7 +67,7 @@ public:
 	void run() override;
 
 private:
-	//TODO string -> string_view
+	//TODO string -> string_view?
 	static std::string _produceLogMessage(
 		const std::string& par_URI, const std::string& par_URIHash, TYPE_HITCOUNT par_URIHitcount,
 		const std::string& par_UserAgent, const std::string& par_UserAgentHash, TYPE_HITCOUNT par_UserAgentHitcount);
